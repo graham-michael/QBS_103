@@ -1,0 +1,112 @@
+---
+title: "QBS103Final_Project"
+output: pdf_document
+date: "2023-07-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+setwd("/Users/grahamschultz/Desktop/QBS_103")
+```
+
+```{r}
+#read in gene expressions csv file
+expressions.df <- read.table(file = "QBS103_finalProject_geneExpression.csv",
+                     sep = ",", header = TRUE, stringsAsFactors = FALSE, na.strings = c("unknown"," unknown"))
+
+#initial view to confirm file was read in correctly
+head(expressions.df)
+tail(expressions.df)
+```
+
+```{r}
+#Read in meta data
+metadata.df <- read.table(file = "QBS103_finalProject_metadata.csv",
+                     sep = ",", header = TRUE, stringsAsFactors = FALSE)
+
+#fix nuknown values in fibrinogen
+metadata.df["fibrinogen"][metadata.df["fibrinogen"] == "unknown"] <- NA
+metadata.df["fibrinogen"][metadata.df["fibrinogen"] == " unknown"] <- NA
+#Iniital view to confirm meta data file was read in correctly
+head(metadata.df)
+tail(metadata.df)
+summary(metadata.df)
+```
+
+
+```{r}
+#Create condensed data frame based on the selected variables
+condensed.df <- data.frame(
+  'Subject ID' = seq(1:126),
+  'DEFA4 Expression' = t(expressions.df[10,2:127]),
+  'Disease Status' = factor(ifelse(metadata.df$disease_status == 'disease state: non-COVID-19','Negative','Positive')),
+  'Required Ventillation' = factor(ifelse(metadata.df$mechanical_ventilation == ' yes','Yes','No')),
+  'Fibrinogen' = as.numeric(metadata.df$fibrinogen)
+)
+
+#summary tables to make sure data was correctly coppied over
+head(condensed.df)
+tail(condensed.df)
+summary(condensed.df)
+```
+
+```{r}
+library(wesanderson)
+projectTheme <- theme(
+        panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        # Define my axis
+        axis.line = element_line(colour = "black", linewidth = rel(1)),
+        # Set plot background
+        plot.background = element_rect(fill = "white"),
+        panel.background = element_blank(),
+        legend.key = element_rect(fill = 'white'), 
+        # Move legend
+        legend.position = 'top')
+
+# Define color palette
+CP <- wesanderson::wes_palette('Chevalier1',n = 2)
+# Generate scatter plot of DEFA4 expression vs fibrinogen
+ggplot(condensed.df,aes(x = X10, y = Fibrinogen, color = Disease.Status)) + 
+  geom_point() +
+  # Change labels
+  labs(x = 'DEFA4 Gene Expression',y = 'Fibrinogen (mg/dL)', color = 'Disease Status') +
+  #change colors
+  scale_color_manual(values = CP) +
+  # Set theme
+  projectTheme
+```
+
+```{r}
+ggplot(condensed.df,aes(x = X10)) + 
+  geom_histogram(binwidth = 20) +
+  labs(x = 'DEFA4 Gene Expression',y = 'Frequency') +
+  projectTheme
+```
+
+```{r}
+ggplot(condensed.df,aes(x = X10)) + 
+  geom_histogram(binwidth = 10) +
+  labs(x = 'DEFA4 Gene Expression',y = 'Frequency') +
+  xlim(0,700)
+  projectTheme
+```
+
+```{r}
+#Define new cp for boxplot
+newCP <- wesanderson::wes_palette('Darjeeling2',n = 2)
+ggplot(condensed.df,aes(x = Required.Ventillation,y = X10,color = Disease.Status)) +
+  # Add box plot
+  geom_boxplot() +
+  # Define colors 
+  scale_color_manual(values = newCP) +
+  # Change labels
+  labs(y = 'DEFA4 Gene Expression',x = 'Required Ventillation', color = 'Disease Status') +
+  ylim(0, 1000) +
+  # Set theme
+  projectTheme
+```
