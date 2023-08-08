@@ -1,0 +1,146 @@
+---
+title: "Final_Project_Two"
+output:
+  pdf_document: default
+  html_document: default
+date: "2023-08-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+```{r}
+library(tidyverse)
+setwd("/Users/grahamschultz/Desktop/QBS_103")
+```
+
+```{r}
+#read in gene expressions csv file
+expressions.df <- read.table(file = "QBS103_finalProject_geneExpression.csv",
+                     sep = ",", header = TRUE, stringsAsFactors = FALSE, na.strings = c("unknown"," unknown"))
+
+#initial view to confirm file was read in correctly
+#head(expressions.df)
+#tail(expressions.df)
+expressions.df
+```
+
+```{r}
+#Read in meta data
+metadata.df <- read.table(file = "QBS103_finalProject_metadata.csv",
+                     sep = ",", header = TRUE, stringsAsFactors = FALSE, na.strings = c('unknown',' unknown'))
+#Iniital view to confirm meta data file was read in correctly
+#head(metadata.df)
+#tail(metadata.df)
+summary(metadata.df)
+```
+
+
+```{r}
+#Create condensed data frame based on the selected variables
+condensed.df <- data.frame(
+  'subject_id' = seq(1:126),
+  'DEFA4_expression' = t(expressions.df[10,2:127]),
+  'DEFA1_expression' = t(expressions.df[11,2:127]), #add in additional genes for part 2 function
+  'MMP8_expression' = t(expressions.df[12,2:127]),
+  'COVID19_Status' = factor(ifelse(metadata.df$disease_status == 'disease state: non-COVID-19','Negative','Positive')),
+  'required_ventillation' = factor(ifelse(metadata.df$mechanical_ventilation == ' yes','Yes','No')),
+  'Fibrinogen' = as.numeric(metadata.df$fibrinogen)
+)
+#rename colnames
+names(condensed.df)[names(condensed.df) == "X10"] <- "DEFA4"
+names(condensed.df)[names(condensed.df) == "X11"] <- "DEFA1"
+names(condensed.df)[names(condensed.df) == "X12"] <- "MMP8"
+#colnames(condensed.df)
+# Convert gene expression to log2
+#summary tables to make sure data was correctly coppied over
+#head(condensed.df)
+#tail(condensed.df)
+summary(condensed.df)
+```
+
+```{r}
+library(tidyverse)
+library(wesanderson)
+
+#Define funciton
+final_func <- function(df,gene,cont_var,cat_var,gene_max) {
+  #define theme for all plots
+  projectTheme <- theme(
+        panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        # Define my axis
+        axis.line = element_line(colour = "black", linewidth = rel(1)),
+        # Set plot background
+        plot.background = element_rect(fill = "white"),
+        panel.background = element_blank(),
+        legend.key = element_rect(fill = 'white'), 
+        # Move legend
+        legend.position = 'top')
+  
+  #create histogram
+  histo <- ggplot(df,aes_string(x = gene)) + 
+  geom_histogram(binwidth = ceiling(gene_max/100)) +
+  # Add labels
+  labs(x = substitute(paste(italic(gene)," Expression")),y = 'Frequency') +
+  #Add Title
+  ggtitle(substitute(paste(italic(gene)," Expression Histogram"))) +
+  #Add theme
+  projectTheme
+  
+  #Define Color Palette
+  CP <- wesanderson::wes_palette('Royal1',n = 4)
+  
+  #Create scatterplot
+  scatterplot <- ggplot(df,aes_string(x = gene, y = cont_var, color = cat_var[1])) + 
+  geom_point() +
+  # Change labels
+  labs(x = substitute(paste(italic(gene)," Expression")),y = str_to_title(cont_var), color = chartr('_',' ',cat_var)) +
+  #change colors
+  scale_color_manual(values = CP) +
+  #add title
+  ggtitle(substitute(paste(cont_var, " vs ", paste(italic(gene)," Expression")))) +
+  #add horizontal line
+  geom_hline(yintercept=700, linetype="dashed", color = CP[4]) +
+  #add annotation
+  annotate(geom = 'text', x = (gene_max+gene_max/19), y = 730, label = "Elevated", color = CP[4]) +
+  annotate(geom = 'text', x = (gene_max+gene_max/5.3), y = 730, label = cont_var, color = CP[4]) +
+  #Set ylim
+  xlim(0,gene_max+gene_max/5) +
+  # Set theme
+  projectTheme
+  
+  #Create boxplots
+  box = ggplot(df,aes_string(x = cat_var[2],y = gene, color = cat_var[1])) +
+  # Add box plot
+  geom_boxplot() +
+  # Define colors 
+  scale_color_manual(values = CP) +
+  # Change labels
+  labs(y = substitute(paste(italic(gene)," Expression")),x = str_to_title(chartr('_',' ',cat_var[2])), color = str_to_title(chartr('_',' ',cat_var[1]))) +
+  # Add title
+  ggtitle(substitute(paste(italic(gene)," Expression Boxplot"))) +
+  # Set theme
+  projectTheme
+  
+  #return plots
+  print(histo)
+  print(scatterplot)
+  print(box)
+}
+```
+
+```{r}
+#run fucntion with DEFA4 gene (w/ corrected plots)
+final_func(condensed.df,'DEFA4','Fibrinogen',c('COVID19_Status','required_ventillation'),1981)
+```
+
+```{r}
+#run functions with new genes
+final_func(condensed.df,'DEFA1','Fibrinogen',c('COVID19_Status','required_ventillation'),1711)
+final_func(condensed.df,'MMP8','Fibrinogen',c('COVID19_Status','required_ventillation'),163)
+```
