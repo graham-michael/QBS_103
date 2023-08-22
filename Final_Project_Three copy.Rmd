@@ -1,0 +1,287 @@
+---
+title: "Final_Project_Three"
+output:
+  pdf_document: default
+  html_document: default
+date: "2023-08-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#update.packages(ask = FALSE, checkBuilt = TRUE)
+```
+
+## R Markdown
+
+```{r}
+library(tidyverse)
+library(knitr)
+#library(kableExtra)
+library(Hmisc)
+library(pheatmap)
+setwd("/Users/grahamschultz/Desktop/QBS_103")
+```
+
+```{r}
+#read in gene expressions csv file
+expressions.df <- read.table(file = "QBS103_finalProject_geneExpression.csv",
+                     sep = ",", header = TRUE, stringsAsFactors = FALSE, na.strings = c("unknown"," unknown"))
+
+#initial view to confirm file was read in correctly
+#head(expressions.df)
+#tail(expressions.df)
+colnames(expressions.df) <- c('Genes',seq(1,126,1))
+#expressions.df
+```
+
+```{r}
+#Read in meta data
+metadata.df <- read.table(file = "QBS103_finalProject_metadata.csv",
+                     sep = ",", header = TRUE, stringsAsFactors = FALSE, na.strings = c('unknown',' unknown'))
+#Iniital view to confirm meta data file was read in correctly
+head(metadata.df)
+#tail(metadata.df)
+#summary(metadata.df)
+```
+
+```{r}
+#Create condensed data frame based on the selected variables
+condensed.df <- data.frame(
+  'subject_id' = seq(1:126),
+  'DEFA4_expression' = t(expressions.df[10,2:127]),
+  'DEFA1_expression' = t(expressions.df[11,2:127]), #add in additional genes for part 2 function
+  'MMP8_expression' = t(expressions.df[12,2:127]),
+  'COVID19_Status' = factor(ifelse(metadata.df$disease_status == 'disease state: non-COVID-19','Negative','Positive')),
+  'required_ventillation' = factor(ifelse(metadata.df$mechanical_ventilation == ' yes','Yes','No')),
+  'sex' = factor(ifelse(metadata.df$sex == ' male','Male','Female')),
+  'Fibrinogen' = as.numeric(metadata.df$fibrinogen),
+  'Ferritin' = as.numeric(metadata.df$ferritin.ng.ml.),
+  'CRP' = as.numeric(metadata.df$crp.mg.l.)
+)
+#rename colnames
+names(condensed.df)[names(condensed.df) == "X10"] <- "DEFA4"
+names(condensed.df)[names(condensed.df) == "X11"] <- "DEFA1"
+names(condensed.df)[names(condensed.df) == "X12"] <- "MMP8"
+#colnames(condensed.df)
+# Convert gene expression to log2
+#summary tables to make sure data was correctly coppied over
+#head(condensed.df)
+#tail(condensed.df)
+#summary(condensed.df)
+#condensed.df
+```
+
+```{r}
+sum_table <- function(df,var_list,cont_vars,cat_vars) {
+  # Define an empty table
+  table1 <- matrix(nrow = 0,ncol = 2)
+  # Keep track of rows to indent
+  indentRows <- c()
+  # Loop through all variables
+  for (var in var_list) {
+    # Define vector of variable values
+    x <- df[,var]
+    # Separate continuous variables
+    if (var %in% cont_vars) {
+      # Calculate summary values for continuous variables
+      var_med <- round(median(x,na.rm = TRUE))
+      var_IQR_low <- round(quantile(x,1/4,na.rm = TRUE),digits = 2)
+      var_IQR_high <- round(quantile(x,3/4,na.rm = TRUE),digits = 2)
+      # Combine values
+      value <- paste0(var_med,' [',var_IQR_low,', ',var_IQR_high,']')
+      # Append table with summary values
+      newRow <- c(paste0(var,' Median [IQR]'),value)
+      table1 <- rbind(table1,newRow)
+    }
+    # Identify if categorical
+    if (var %in% cat_vars) {
+      # Define new row for overall variable
+      newRow <- c(paste0(capitalize(str_replace(var,"_"," ")),' n (%)'),'')
+      # Add row to data frame
+      table1 <- rbind(table1,newRow)
+      # Loop through levels of variable
+      for (level in levels(x)) {
+        # Calculate frequency of levels
+        n <- sum(x == level,na.rm = TRUE)
+        perc <- round(n / sum(!is.na(x)) * 100, digits = 2)
+        # Combine values
+        value <- paste0(n,' (',perc,')')
+        # Append row to data frame
+        newRow <- c(level,value)
+        table1 <- rbind(table1,newRow)
+        # Add index to indented rows
+        indentRows <- c(indentRows,nrow(table1))
+      }
+    }
+  }
+  # Define sample size for heading
+  sampleSize <- paste("n = 126")
+  
+  # Print formatted table
+  kable(x = table1, caption = 'Table 1',
+        col.names = c("Variable",sampleSize),
+        align = c('l','r'),escape = T,row.names = F) %>%
+    add_indent(positions = indentRows) %>%
+    kable_classic()
+}
+```
+
+```{r}
+# Run table function for chosen variables
+#sum_table(condensed.df,c('COVID19_Status','required_ventillation','sex','Fibrinogen','Ferritin','CRP'),c('Fibrinogen','Ferritin','CRP'),c('COVID19_Status','required_ventillation','sex'))
+```
+
+```{r}
+library(tidyverse)
+library(wesanderson)
+
+#Define funciton
+final_func <- function(df,gene,cont_var,cat_var,gene_max) {
+  #define theme for all plots
+  projectTheme <- theme(
+        panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        # Define my axis
+        axis.line = element_line(colour = "black", linewidth = rel(1)),
+        # Set plot background
+        plot.background = element_rect(fill = "white"),
+        panel.background = element_blank(),
+        legend.key = element_rect(fill = 'white'), 
+        # Move legend
+        legend.position = 'top',
+        plot.title = element_text(hjust = 0.5))
+  
+  #create histogram
+  histo <- ggplot(df,aes_string(x = gene)) + 
+  geom_histogram(binwidth = ceiling(gene_max/100), fill = "white",color = "black") +
+  # Add labels
+  labs(x = substitute(paste(italic(gene)," Expression")),y = 'Frequency') +
+  #Add Title
+  ggtitle(substitute(paste(italic(gene)," Expression Histogram"))) +
+  #Add theme
+  projectTheme
+  
+  #Define Color Palette
+  CP <- wesanderson::wes_palette('Royal1',n = 4)
+  
+  #Create scatterplot
+  scatterplot <- ggplot(df,aes_string(x = gene, y = cont_var, color = cat_var[1])) + 
+  geom_point() +
+  # Change labels
+  labs(x = substitute(paste(italic(gene)," Expression")),y = str_to_title(cont_var), color = chartr('_',' ',cat_var)) +
+  #change colors
+  scale_color_manual(values = CP) +
+  #add title
+  ggtitle(substitute(paste(cont_var, " vs ", paste(italic(gene)," Expression")))) +
+  #add horizontal line
+  geom_hline(yintercept=700, linetype="dashed", color = CP[4]) +
+  #add annotation
+  annotate(geom = 'text', x = (gene_max+gene_max/19), y = 730, label = "Elevated", color = CP[4]) +
+  annotate(geom = 'text', x = (gene_max+gene_max/5.3), y = 730, label = cont_var, color = CP[4]) +
+  #Set ylim
+  xlim(0,gene_max+gene_max/5) +
+  # Set theme
+  projectTheme
+  
+  #Create boxplots
+  box = ggplot(df,aes_string(x = cat_var[2],y = gene, color = cat_var[1])) +
+  # Add box plot
+  geom_boxplot() +
+  # Define colors 
+  scale_color_manual(values = CP) +
+  # Change labels
+  labs(y = substitute(paste(italic(gene)," Expression")),x = str_to_title(chartr('_',' ',cat_var[2])), color = chartr('_',' ',cat_var[1])) +
+  # Add title
+  ggtitle(substitute(paste(italic(gene)," Expression by Ventillation Requirement Boxplot"))) +
+  # Set theme
+  projectTheme
+  
+  #return plots
+  print(histo)
+  print(scatterplot)
+  print(box)
+}
+```
+
+```{r}
+#run fucntion with DEFA4 gene (w/ corrected plots)
+final_func(condensed.df,'DEFA4','Fibrinogen',c('COVID19_Status','required_ventillation'),1981)
+```
+
+```{r}
+#load df with gene expressions for first 10 genes
+heatdf = data.frame(
+  'APOA1' = t(expressions.df[2,2:127]),
+  'APOA2' = t(expressions.df[3,2:127]),
+  'APOM' = t(expressions.df[4,2:127]),
+  'PRTN3' = t(expressions.df[5,2:127]),
+  'LCN2' = t(expressions.df[6,2:127]),
+  'CD24' = t(expressions.df[7,2:127]),
+  'BPI' = t(expressions.df[8,2:127]),
+  'CTSG' = t(expressions.df[9,2:127]),
+  'DEFA4' = t(expressions.df[10,2:127]),
+  'DEFA1' = t(expressions.df[11,2:127])
+)
+# normalize expressions
+heatdf <- log2(heatdf)
+# Remove -inf values
+heatdf[heatdf == "-Inf"] <- NA
+# Rename columns to match genes
+colnames(heatdf) <- c('APOA1','APOA2','APOM','PRTN3','LCN2','CD24','BPI','CTSG','DEFA4','DEFA1')
+```
+
+```{r}
+CP <- wesanderson::wes_palette('Royal1',n = 4)
+
+trackdf <- data.frame(
+  'COVID19' = factor(ifelse(metadata.df$disease_status == 'disease state: non-COVID-19','Negative','Positive')),
+  'Ventillation' = factor(ifelse(metadata.df$mechanical_ventilation == ' yes','Required','Not Required'))
+  )
+trackcol <- list(COVID19 = c('Negative' = CP[1],
+                                    'Positive' = CP[2]),
+                 Ventillation = c('Required' = CP[3],
+                                           'Not Required' = CP[4]))
+
+#generate heat map
+pheatmap(heatdf,
+         clustering_distance_cols = 'euclidean',
+         clustering_distance_rows = 'euclidean',
+         annotation_row = trackdf,
+         annotation_colors = trackcol,
+         show_rownames = FALSE,
+         main = "Gene Expression Heatmap by Ventillation and COVID19 Status"
+)
+```
+
+```{r}
+#load in array of genes and average expression
+exp_mean <- data.frame(
+  "Genes" = c('APOA1','APOA2','APOM','PRTN3','LCN2','CD24','BPI','CTSG','DEFA4','DEFA1'),
+  "Mean.Exp" = c(-1.9872481,1.7036316,0.2034105,7.1999242,5.1726990,4.4881283,3.3594527,8.5476256,5.9331323,4.5766308)
+)
+#exp_mean
+```
+
+```{r}
+projectTheme <- theme(
+      panel.border = element_blank(), panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(), 
+      # Define my axis
+      axis.line = element_line(colour = "black", linewidth = rel(1)),
+      # Set plot background
+      plot.background = element_rect(fill = "white"),
+      panel.background = element_blank(),
+      legend.key = element_rect(fill = 'white'), 
+      # Move legend
+      legend.position = 'top',
+      plot.title = element_text(hjust = 0.5))
+
+ggplot(exp_mean, aes(x = Genes, y = Mean.Exp, label = Mean.Exp)) + 
+  geom_point(stat = 'identity', fill = "black", size = 6)  +
+  geom_segment(aes(y = 0, x = Genes, yend = Mean.Exp, xend = Genes), color = "black") +
+  geom_text(aes(y = Mean.Exp, label = round(Mean.Exp, 2)), color = "white", size = 2) +
+  labs(title = "Diverging Lollipop Chart for Gene Expression", x = "Mean Gene Expression") + 
+  ylim(-2,10) +
+  coord_flip() +
+  projectTheme
+```
